@@ -9,6 +9,77 @@ This project uses [semantic versioning](https://semver.org/) plus dist-tags:
 - `cohort-N` — pinned release shipped with cohort N; held forever so
   students of that cohort always get a reproducible build.
 
+## [0.2.0] — 2026-06-20
+
+### Added
+
+- New commands:
+  - `guide <ch-N|N>` — render the bundled bilingual chapter guide in
+    the terminal (in-house markdown→ANSI renderer, no `marked` dep).
+  - `verify <ch-N|N>` — run the per-chapter `check-chN.sh`. Falls back
+    to `doctor.sh ch-N` when the dedicated checker is not yet vendored.
+  - `guides ls | <slug>` — list or render bundled docs by category
+    (blog, cheatsheet, TLDR). Locale-aware: prefers `<slug>-<lang>.md`.
+  - `faq [query]` — case-insensitive token-overlap search over
+    `FAQ.md` + curated `qa-pairs.jsonl`. Interactive prompt when no
+    query is given.
+  - `env` — read-only snapshot of detected AI providers, model env
+    vars, tool versions, and `~/.vct/config.json` state.
+  - `submit <ch-N>` — `git push` + `gh pr create` with a
+    chapter-aware PR body (`Cohort / Chapter / Builder`).
+  - `lang my|en|kar` — persist the CLI language to `~/.vct/config.json`.
+  - `skill add|list`, `agent add|list`, `mcp add|list` — Phase 3
+    scaffolds; print a clear "wiring in Phase 3" message and exit 0.
+- New flags:
+  - `--dry-run` — on `setup` / `api-setup`, prints what would happen
+    without spawning the shell scripts.
+- `api-setup` now starts with an interactive provider picker
+  (Claude direct / Anthropic OAuth / LiteLLM proxy / Skip) and
+  persists the choice as `provider` in `~/.vct/config.json`. Skipped
+  on `--quiet` or non-TTY.
+- Bundled docs:
+  - 8 guides under `scripts/guides/` (TLDR, cheatsheet, three blog
+    posts; EN always, MY for the smaller items).
+  - 2 chapter content files under `scripts/chapters/` (ch-0, ch-1
+    English; later chapters fall through to the curriculum URL).
+  - `FAQ.md` + resolved `qa-pairs.jsonl` (69 entries) under
+    `scripts/faq/`.
+- Karen S'gaw (`kar`) locale scaffold in `lib/i18n.js`. Most keys
+  still English-fallback; covered keys are marked `TODO(kar)` for
+  mentor review. `lang.scaffold` warning surfaces on switch.
+- `lib/markdown.js` — terminal markdown renderer (headings,
+  fenced code, lists, blockquotes, inline code/bold/italic, links).
+- `lib/env.js` — provider + tool detection (walks `PATH` manually so
+  no dependency on `command -v` or `which`).
+- `lib/prompt.js` — tiny TTY-aware single-line prompt helper.
+- Parser now extracts a `subcommand` slot for `skill / agent / mcp /
+  guides / lang` namespaces.
+
+### Changed
+
+- `lib/scripts.js` now derives `SCRIPT_FILES` dynamically from
+  `EMBEDDED_SOURCES`, so vendoring a new `check-chN.sh` only requires
+  dropping the file into `scripts/` and re-running `build-embed.mjs`.
+- `scripts/build-embed.mjs` now also embeds `guides/`, `chapters/`,
+  and `faq/` directories.
+- Banner + `--help` updated to advertise every new command.
+
+### Tests
+
+- `tests/faq.test.mjs` — substring + ranking smoke tests against
+  bundled assets.
+- `tests/i18n.test.mjs` — coverage check: every important key resolves
+  in en/my/kar (kar falls back to en when un-translated).
+- `tests/parser.test.mjs` — new commands + subcommand namespaces +
+  `--dry-run`.
+- `tests/scripts.test.mjs` — relaxed to the dynamic `SCRIPT_FILES`
+  length so future `check-chN.sh` additions don't break the suite.
+
+### Bundle
+
+- `dist/cli.mjs` ≈ 248 KiB (was 92 KiB) — growth is bundled content,
+  not code.
+
 ## [0.1.0] — 2026-06-20
 
 ### Added

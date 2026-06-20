@@ -18,45 +18,94 @@ vibe-code-tours --help
 
 ## Commands
 
-| Command                   | What it does                                                   |
-|---------------------------|----------------------------------------------------------------|
-| (no command)              | Print the amber banner + cohort status + menu                  |
-| `doctor`                  | Chapter-aware environment diagnostic (`doctor.sh`)             |
-| `setup`                   | Fork the bootcamp repos + scaffold your dev box                |
-| `api-setup`               | Wire Claude Code / opencode to the bootcamp LLM proxy          |
-| `check <ch-N>`            | Verify chapter readiness — alias for `doctor ch-N`             |
-| `--cohort N --free`       | Persist cohort choice + open the free-seat apply URL           |
+| Command                       | What it does                                                   |
+|-------------------------------|----------------------------------------------------------------|
+| (no command)                  | Print the amber banner + cohort status + menu                  |
+| `doctor`                      | Chapter-aware environment diagnostic (`doctor.sh`)             |
+| `setup [--dry-run]`           | Fork the bootcamp repos + scaffold your dev box                |
+| `api-setup [--dry-run]`       | Interactive provider picker → wire Claude / opencode           |
+| `check <ch-N>`                | Verify chapter readiness — alias for `doctor ch-N`             |
+| `guide <ch-N\|N>`             | Render the bundled bilingual chapter guide in the terminal     |
+| `verify <ch-N\|N>`            | Run the per-chapter `check-chN.sh` (falls back to `doctor.sh`) |
+| `guides ls`                   | List bundled docs grouped by category (blog / cheatsheet / TLDR) |
+| `guides <slug>`               | Render a bundled doc (locale-aware via `--lang`)               |
+| `faq [query]`                 | Search the bundled FAQ + Discord Q&A; prompts when no query    |
+| `env`                         | Read-only snapshot: providers, model env vars, tool versions   |
+| `submit <ch-N>`               | `git push` + `gh pr create` with a chapter-aware PR body       |
+| `lang my\|en\|kar`            | Switch + persist the CLI language                              |
+| `skill add\|list <name>`      | Phase 3 scaffold — prints the wiring TODO                      |
+| `agent add\|list <name>`      | Phase 3 scaffold — prints the wiring TODO                      |
+| `mcp add\|list <name>`        | Phase 3 scaffold — prints the wiring TODO                      |
+| `--cohort N --free`           | Persist cohort choice + open the free-seat apply URL           |
 
 ### Global flags
 
-| Flag               | Meaning                                            |
-|--------------------|----------------------------------------------------|
-| `--cohort N`       | Select & persist cohort to `~/.vct/config.json`    |
-| `--free`           | With `--cohort`, open `vibecode.tours/apply?...`   |
-| `--lang en|my|kar` | UI language (en + my today; kar coming Phase 2)    |
-| `--no-color`       | Disable ANSI; same as `NO_COLOR=1`                 |
-| `--quiet` / `-q`   | Suppress banner + non-essential stderr             |
-| `--version` / `-v` | Print version and exit                             |
-| `--help` / `-h`    | Show help                                          |
+| Flag                  | Meaning                                              |
+|-----------------------|------------------------------------------------------|
+| `--cohort N`          | Select & persist cohort to `~/.vct/config.json`      |
+| `--free`              | With `--cohort`, open `vibecode.tours/apply?...`     |
+| `--lang en\|my\|kar`  | UI language (en + my are mentor-reviewed; kar is a scaffold) |
+| `--dry-run`           | On `setup` / `api-setup`: show what would happen, no spawn |
+| `--no-color`          | Disable ANSI; same as `NO_COLOR=1`                   |
+| `--quiet` / `-q`      | Suppress banner + non-essential stderr               |
+| `--version` / `-v`    | Print version and exit                               |
+| `--help` / `-h`       | Show help                                            |
 
 Pass-through to the underlying bash script: anything after `--` is
 forwarded verbatim. Example: `vibe-code-tours doctor -- --ci`.
+
+### Examples
+
+```bash
+# Sanity-check tools + providers detected on this machine.
+vibe-code-tours env
+
+# Read chapter 1 in your terminal.
+vibe-code-tours guide ch-1
+
+# Run the chapter 1 checker (`check-ch1.sh`).
+vibe-code-tours verify 1
+
+# Ask the FAQ a question.
+vibe-code-tours faq "claude code login"
+
+# Switch the UI to Burmese.
+vibe-code-tours lang my
+
+# Open a PR for your chapter-1 submission.
+vibe-code-tours submit ch-1
+```
 
 ## Where things live
 
 ```
 ~/.vct/
-├── config.json        # { cohort, lang, github, telemetry_optin }
+├── config.json        # { cohort, lang, github, provider, telemetry_optin }
 └── scripts/
     ├── doctor.sh
     ├── student-setup.sh
     ├── api-setup.sh
-    └── check-ch1.sh
+    └── check-chN.sh
 ```
+
+Bundled docs (`guides/`, `chapters/`, `faq/`) live **inside the npm
+package** and are read straight out of `lib/embedded.gen.js` — no
+network needed.
 
 Scripts are vendored from the curriculum repo (see
 `scripts/NOTICE.md`), bundled into the CLI, and re-extracted whenever
 the bundled SHA-256 differs from the on-disk copy.
+
+## Localization
+
+| Locale | Status                                                         |
+|--------|----------------------------------------------------------------|
+| `en`   | Canonical — every key                                          |
+| `my`   | Mentor-reviewed for every CLI surface key                      |
+| `kar`  | Scaffolded — most strings fall back to `en` until reviewed     |
+
+Switching to `kar` prints a one-line scaffold warning. PRs welcome
+in `lib/i18n.js`.
 
 ## Cross-platform
 
@@ -70,7 +119,7 @@ the bundled SHA-256 differs from the on-disk copy.
 ## Develop
 
 ```bash
-# Generate lib/embedded.gen.js from scripts/*.sh (commit-friendly).
+# Generate lib/embedded.gen.js from scripts/{*.sh,guides,chapters,faq}.
 npm run embed
 
 # Bundle to dist/cli.mjs (used by npm publish).
@@ -82,6 +131,10 @@ node bin/vibe-code-tours.mjs --help
 # Test
 npm test
 ```
+
+Bundle target: **< 250 KiB** for `dist/cli.mjs`. Most of that is
+bundled docs / FAQ; if you add a large markdown file under `scripts/`,
+re-run `npm run build` and check the printed size.
 
 ## Versioning + dist-tags
 
