@@ -1,5 +1,9 @@
 # vibe-code-tours
 
+[![CI](https://github.com/vibe-code-tours/cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vibe-code-tours/cli/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/vibe-code-tours.svg)](https://www.npmjs.com/package/vibe-code-tours)
+[![license: MIT](https://img.shields.io/npm/l/vibe-code-tours.svg)](./LICENSE)
+
 `npx vibe-code-tours` — the official student + instructor CLI for the
 [Vibe Code Tours](https://vibecode.tours) AI-paired coding bootcamp.
 
@@ -135,6 +139,54 @@ npm test
 Bundle target: **< 250 KiB** for `dist/cli.mjs`. Most of that is
 bundled docs / FAQ; if you add a large markdown file under `scripts/`,
 re-run `npm run build` and check the printed size.
+
+## Publishing
+
+Releases are automated by [`.github/workflows/release.yml`](./.github/workflows/release.yml).
+Tag-push the right version and CI does the rest.
+
+### One-time setup (repo admin)
+
+1. Mint an npm **automation** token with publish access to
+   `vibe-code-tours` (npm → *Access Tokens* → *Generate New Token* →
+   *Automation*). Org tokens scoped to the package work too.
+2. Add it to the repo as a secret:
+   - GitHub → **Settings → Secrets and variables → Actions → New repository secret**
+   - Name: `NPM_TOKEN`
+   - Value: the token from step 1
+3. (Already configured) `id-token: write` permission is enabled in
+   the release workflow so `npm publish --provenance` can mint a
+   sigstore attestation.
+
+> Never commit the token. The workflow reads it from `secrets.NPM_TOKEN`
+> only; nothing else needs it.
+
+### Cutting a release
+
+```bash
+# 1. Bump version + add a CHANGELOG section.
+#    The CHANGELOG heading must use Keep-a-Changelog style:
+#      ## [X.Y.Z] — YYYY-MM-DD
+npm version <patch|minor|major>   # also creates the vX.Y.Z git tag
+
+# 2. Push commit + tag.
+git push origin main --follow-tags
+```
+
+When the `vX.Y.Z` tag lands on GitHub:
+
+1. CI runs tests + build (see [`ci.yml`](./.github/workflows/ci.yml)).
+2. `release.yml` verifies tag ↔ `package.json` agree, checks npm for
+   an existing release (skips publish if already there — idempotent),
+   runs `npm publish --provenance --access public`, then opens a
+   GitHub Release with the matching CHANGELOG section as the body
+   (extracted by [`scripts/extract-changelog.mjs`](./scripts/extract-changelog.mjs)).
+
+To re-extract release notes locally for a given version:
+
+```bash
+node scripts/extract-changelog.mjs 0.2.0
+```
 
 ## Versioning + dist-tags
 
