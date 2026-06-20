@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test-build:
+    name: lint + test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          # Zero runtime deps; cache only catches devDependencies (esbuild).
+          cache: npm
+
+      - name: Install dev deps
+        # Project has zero runtime deps but esbuild is needed for the bundle.
+        # npm ci is safe here because package-lock.json is committed.
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build bundle
+        run: npm run build
+
+      - name: Assert bundle exists + size sanity
+        run: |
+          set -euo pipefail
+          BUNDLE=dist/cli.mjs
+          if [ ! -f "$BUNDLE" ]; then
+            echo "::error::expected bundle at $BUNDLE — build did not produce it"
+            exit 1
+          fi
+          SIZE=$(wc -c < "$BUNDLE")
+          MIN=20000     # 20 KiB — anything smaller means the bundle is empty / broken
+          MAX=512000    # 500 KiB — README pins the soft target at 250 KiB; hard ceiling at 500 KiB
+          echo "bundle size: $SIZE bytes (floor=$MIN, ceiling=$MAX)"
+          if [ "$SIZE" -lt "$MIN" ]; then
+            echo "::error::bundle is suspiciously small ($SIZE < $MIN bytes)"
+            exit 1
+          fi
+          if [ "$SIZE" -gt "$MAX" ]; then
+            echo "::error::bundle exceeded ceiling ($SIZE > $MAX bytes) — investigate before shipping"
+            exit 1
+          fi
+
+      - name: Verify CLI boots
+        run: node dist/cli.mjs --version
