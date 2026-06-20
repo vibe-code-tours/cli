@@ -1,0 +1,7 @@
+tests/
+.github/
+PLAN.md
+*.log
+.DS_Store
+.env
+.env.*

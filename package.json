@@ -1,6 +1,6 @@
 {
   "name": "vibe-code-tours",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Vibe Code Tours bootcamp toolkit — student + instructor CLI.",
   "homepage": "https://vibecode.tours",
   "repository": {
@@ -16,15 +16,20 @@
     "bin",
     "lib",
     "scripts",
+    "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test",
-    "build": "echo 'esbuild bundle TODO (Phase 1)'"
+    "test": "node --test 'tests/*.test.mjs'",
+    "embed": "node scripts/build-embed.mjs",
+    "build": "npm run embed && esbuild bin/vibe-code-tours.mjs --bundle --platform=node --target=node22 --format=esm --outfile=dist/cli.mjs",
+    "prepack": "npm run build",
+    "release:dryrun": "npm pack --dry-run"
   },
   "keywords": [
     "vibecode",
@@ -35,6 +40,10 @@
   ],
   "author": "Vibe Code Tours <ai@vibecode.tours>",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "tag": "next"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
   }
 }
