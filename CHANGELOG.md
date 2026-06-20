@@ -9,6 +9,35 @@ This project uses [semantic versioning](https://semver.org/) plus dist-tags:
 - `cohort-N` — pinned release shipped with cohort N; held forever so
   students of that cohort always get a reproducible build.
 
+## [Unreleased]
+
+### Added
+
+- **Live upstream sync for vendored scripts** — `doctor.sh`, `student-setup.sh`,
+  `api-setup.sh`, and `check-ch1.sh` are now fetched at runtime from
+  `vibe-code-tours/vibecode-setup@main` and cached for 24h under
+  `~/.vct/cache/`. The embedded snapshot in the npm package is the
+  fallback when offline / upstream is unreachable.
+- New top-level command `sync` — force-refreshes the cache for all four
+  scripts and prints the before/after sha-256 prefix per file.
+- New global flags:
+  - `--offline` — skip the network and use the embedded fallback.
+  - `--refresh` — clear `~/.vct/cache/<name>` then refetch on the next run.
+- New module `lib/scripts-fetcher.js` (zero deps) — implements ETag-aware
+  fetch with 5s timeout per file, atomic cache writes, and a stale-cache
+  preference over embedded when upstream momentarily fails.
+- GitHub Action `.github/workflows/sync-upstream.yml` — nightly check
+  that opens a PR when upstream scripts diverge from the embedded snapshot.
+
+### Tests
+
+- `tests/scripts-fetcher.test.mjs` — cold cache fetch, fresh cache hit,
+  stale revalidate (304 + 200), network failure → embedded fallback,
+  warm-cache + network failure → keep stale, `--offline` short circuit,
+  `--refresh` cache clear.
+- `tests/parser.test.mjs` — recognizes `--offline`, `--refresh`, and
+  the `sync` command.
+
 ## [0.3.0] — 2026-06-20
 
 ### Added

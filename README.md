@@ -40,6 +40,7 @@ vibe-code-tours --help
 | `skill add\|list <name>`      | Phase 3 scaffold — prints the wiring TODO                      |
 | `agent add\|list <name>`      | Phase 3 scaffold — prints the wiring TODO                      |
 | `mcp add\|list <name>`        | Phase 3 scaffold — prints the wiring TODO                      |
+| `sync`                        | Force-refresh upstream scripts cache; shows before/after sha    |
 | `--cohort N --free`           | Persist cohort choice + open the free-seat apply URL           |
 
 ### Global flags
@@ -54,6 +55,8 @@ vibe-code-tours --help
 | `--quiet` / `-q`      | Suppress banner + non-essential stderr               |
 | `--version` / `-v`    | Print version and exit                               |
 | `--help` / `-h`       | Show help                                            |
+| `--offline`           | Skip the network; use the embedded fallback script   |
+| `--refresh`           | Clear `~/.vct/cache/` then refetch upstream          |
 
 Pass-through to the underlying bash script: anything after `--` is
 forwarded verbatim. Example: `vibe-code-tours doctor -- --ci`.
@@ -85,11 +88,15 @@ vibe-code-tours submit ch-1
 ```
 ~/.vct/
 ├── config.json        # { cohort, lang, github, provider, telemetry }
-└── scripts/
+├── scripts/           # embedded snapshot — always present, used as fallback
+│   ├── doctor.sh
+│   ├── student-setup.sh
+│   ├── api-setup.sh
+│   └── check-chN.sh
+└── cache/             # live upstream snapshot (24h TTL, ETag-aware)
     ├── doctor.sh
-    ├── student-setup.sh
-    ├── api-setup.sh
-    └── check-chN.sh
+    ├── doctor.sh.meta.json     # { etag, fetched_at, sha256 }
+    └── ...
 ```
 
 Bundled docs (`guides/`, `chapters/`, `faq/`) live **inside the npm
@@ -99,6 +106,44 @@ network needed.
 Scripts are vendored from the curriculum repo (see
 `scripts/NOTICE.md`), bundled into the CLI, and re-extracted whenever
 the bundled SHA-256 differs from the on-disk copy.
+
+### Live script sync
+
+The vendored bash scripts (`doctor.sh`, `student-setup.sh`, `api-setup.sh`,
+`check-chN.sh`) drift quickly. The CLI keeps two copies on disk:
+
+| Location              | Role                                                       |
+|-----------------------|------------------------------------------------------------|
+| `~/.vct/scripts/`     | Embedded snapshot shipped with the npm package — fallback. |
+| `~/.vct/cache/`       | Live snapshot fetched from upstream; refreshed every 24h.  |
+
+Each command that spawns a script (`doctor`, `setup`, `api-setup`,
+`check`, `verify`) goes through `materialize()`:
+
+1. If the cache entry is < 24h old → use it (no network).
+2. Otherwise revalidate against
+   `raw.githubusercontent.com/vibe-code-tours/vibecode-setup/main/<name>`
+   with `If-None-Match`. `304` keeps the cache + bumps `fetched_at`;
+   `200` rewrites the cache when sha-256 differs.
+3. Network errors or 5xx → keep the stale cache, or fall back to
+   the embedded snapshot if the cache body is missing.
+
+Per-fetch timeout is 5s and the call is non-blocking — if the network
+is down, the script still runs from `~/.vct/scripts/` instantly.
+
+Manual control:
+
+```bash
+vibe-code-tours sync          # force-refresh all four scripts
+vibe-code-tours doctor --offline   # skip network entirely
+vibe-code-tours doctor --refresh   # clear cache, refetch this run
+```
+
+The embedded snapshot itself is refreshed automatically: the
+`.github/workflows/sync-upstream.yml` Action runs nightly, diffs the
+checked-in `scripts/*.sh` against upstream, and opens a PR titled
+`chore(sync): upstream vibecode-setup snapshot YYYY-MM-DD` whenever
+they diverge.
 
 ## Localization
 
