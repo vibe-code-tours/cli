@@ -36,6 +36,12 @@ test('normalizes --no-color to noColor', () => {
   assert.equal(r.flags.noColor, true);
 });
 
+test('normalizes --dry-run to dryRun', () => {
+  const r = parse(['setup', '--dry-run']);
+  assert.equal(r.flags.dryRun, true);
+  assert.equal(r.command, 'setup');
+});
+
 test('captures rest after --', () => {
   const r = parse(['doctor', '--', '--script-flag', 'arg']);
   assert.equal(r.command, 'doctor');
@@ -64,4 +70,66 @@ test('multiple flags + command + rest mix', () => {
   assert.equal(r.command, 'setup');
   assert.equal(r.flags.quiet, true);
   assert.deepEqual(r.rest, ['extra']);
+});
+
+// --- Phase 2 commands ----------------------------------------------------
+
+test('recognizes new top-level commands', () => {
+  for (const cmd of ['guide', 'verify', 'guides', 'faq', 'env', 'submit', 'lang', 'skill', 'agent', 'mcp']) {
+    const r = parse([cmd]);
+    assert.equal(r.command, cmd, `${cmd} should be a known command`);
+    assert.deepEqual(r.errors, [], `${cmd} should not produce an error`);
+  }
+});
+
+test('skill add <name> pulls out subcommand', () => {
+  const r = parse(['skill', 'add', 'foo']);
+  assert.equal(r.command, 'skill');
+  assert.equal(r.subcommand, 'add');
+  assert.deepEqual(r.positional, ['foo']);
+});
+
+test('agent list pulls out subcommand', () => {
+  const r = parse(['agent', 'list']);
+  assert.equal(r.command, 'agent');
+  assert.equal(r.subcommand, 'list');
+  assert.deepEqual(r.positional, []);
+});
+
+test('mcp add <name> pulls out subcommand', () => {
+  const r = parse(['mcp', 'add', 'context7']);
+  assert.equal(r.command, 'mcp');
+  assert.equal(r.subcommand, 'add');
+  assert.deepEqual(r.positional, ['context7']);
+});
+
+test('guides ls treats ls as subcommand', () => {
+  const r = parse(['guides', 'ls']);
+  assert.equal(r.command, 'guides');
+  assert.equal(r.subcommand, 'ls');
+});
+
+test('guides <slug> treats slug as subcommand', () => {
+  const r = parse(['guides', 'TLDR']);
+  assert.equal(r.command, 'guides');
+  assert.equal(r.subcommand, 'TLDR');
+});
+
+test('lang kar treats kar as subcommand', () => {
+  const r = parse(['lang', 'kar']);
+  assert.equal(r.command, 'lang');
+  assert.equal(r.subcommand, 'kar');
+});
+
+test('guide ch-1 keeps ch-1 as positional (no subcommand namespace)', () => {
+  const r = parse(['guide', 'ch-1']);
+  assert.equal(r.command, 'guide');
+  assert.equal(r.subcommand, null);
+  assert.deepEqual(r.positional, ['ch-1']);
+});
+
+test('verify 1 keeps 1 as positional', () => {
+  const r = parse(['verify', '1']);
+  assert.equal(r.command, 'verify');
+  assert.deepEqual(r.positional, ['1']);
 });
