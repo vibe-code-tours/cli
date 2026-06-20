@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write    # required by softprops/action-gh-release
+  id-token: write    # required by `npm publish --provenance`
+
+jobs:
+  publish:
+    name: publish to npm + GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      - name: Install dev deps
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build bundle
+        run: npm run build
+
+      - name: Resolve versions
+        id: ver
+        # github.ref is controlled by GitHub itself; safe to read via env.
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Strip leading 'v' from the tag (vX.Y.Z -> X.Y.Z).
+          TAG_VERSION="${REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag $REF_NAME -> $TAG_VERSION does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$REF_NAME"       >> "$GITHUB_OUTPUT"
+
+      - name: Check if version already published (idempotent)
+        id: published
+        env:
+          PKG_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          PKG_NAME=$(node -p "require('./package.json').name")
+          # `npm view` exits non-zero when the version is missing; guard with `|| true`.
+          EXISTING=$(npm view "${PKG_NAME}@${PKG_VERSION}" version 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            echo "already-published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::${PKG_NAME}@${PKG_VERSION} already on npm — skipping publish"
+          else
+            echo "already-published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm (with provenance)
+        if: steps.published.outputs.already-published != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+
+      - name: Extract changelog section
+        id: changelog
+        env:
+          PKG_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          BODY_FILE="$RUNNER_TEMP/release-body.md"
+          if ! node scripts/extract-changelog.mjs "$PKG_VERSION" > "$BODY_FILE"; then
+            echo "::warning::no changelog section for $PKG_VERSION — release notes will be empty"
+            : > "$BODY_FILE"
+          fi
+          echo "body-path=$BODY_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          body_path: ${{ steps.changelog.outputs.body-path }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
