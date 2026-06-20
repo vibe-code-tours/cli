@@ -97,5 +97,4 @@ Release tags in git mirror dist-tags: `v0.1.0`, `cohort-2`, etc.
 
 ## License
 
-MIT. See [`LICENSE`](./LICENSE). Curriculum content is licensed
-separately — see the [curriculum repo](https://github.com/vibe-code-tours/curriculum).
+MIT. See [`LICENSE`](./LICENSE).
