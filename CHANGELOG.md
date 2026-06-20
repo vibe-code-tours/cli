@@ -9,6 +9,57 @@ This project uses [semantic versioning](https://semver.org/) plus dist-tags:
 - `cohort-N` — pinned release shipped with cohort N; held forever so
   students of that cohort always get a reproducible build.
 
+## [0.3.0] — 2026-06-20
+
+### Added
+
+- New commands:
+  - `whoami` — print the saved `~/.vct/config.json` (cohort, lang,
+    GitHub handle, AI provider, telemetry opt-in) along with the
+    embedded scripts bundle id and CLI version. Exits 0 even when
+    no config has been written yet.
+  - `sponsor` — open https://vibecode.tours/sponsors via the
+    cross-platform URL opener; in headless / no-DISPLAY environments,
+    falls back to printing the URL.
+  - `reset [--yes]` — interactively confirms then wipes
+    `~/.vct/config.json`. `--yes` skips the prompt for CI use.
+- New flags:
+  - `--json` on `doctor` — captures `doctor.sh` output, parses well-
+    known tool status lines and section headers, and emits a
+    `vibe-code-tours/doctor@1` JSON payload to stdout (no ANSI).
+  - `--yes` / `-y` — used by `reset` to bypass the confirmation prompt.
+- `lib/whoami.js`, `lib/doctor-json.js` — new helpers behind the
+  `whoami` and `doctor --json` commands. Zero new dependencies.
+- Bilingual labels (EN + MY) for the new commands; `kar` falls back
+  to EN until the locale is filled in.
+- **Opt-in telemetry pipeline** — separate Cloudflare Worker
+  (`worker/`) accepts `POST /api/cli-telemetry/event` and exposes
+  `GET /api/cli-telemetry/stats`. CLI side (`lib/telemetry.js`) is
+  fully opt-in, best-effort, 1s timeout, errors swallowed.
+  Payload is exactly `{ cohort, command, exit_code, ts, cli_version }`.
+  No PII, no IPs retained server-side. First-run prompt fires once
+  after a successful `setup`. Disable anytime via `reset` or by
+  editing `~/.vct/config.json`.
+
+### Changed
+
+- `npm run build` now passes `--minify` to esbuild so the bundled
+  CLI stays under 260 KiB despite the new commands + locale strings.
+  Source maps unchanged; runtime behavior is byte-for-byte identical.
+
+### Tests
+
+- `tests/parser.test.mjs` — recognizes `whoami`, `sponsor`, `reset`,
+  `--json`, and `--yes` / `-y`.
+- `tests/whoami.test.mjs` — renders gracefully with no config and
+  with a fully populated config (stubs `$HOME`).
+- `tests/reset.test.mjs` — `reset --yes` deletes `~/.vct/config.json`
+  and exits cleanly when the file is missing.
+- `tests/telemetry.test.mjs` — opt-out path is silent; opt-in path
+  POSTs the event; all errors (timeouts, network) are swallowed.
+- `worker/tests/{validate,rate-limit}.test.ts` — validator allowlist,
+  out-of-range rejects, KV-backed hourly rate limiter behaviour.
+
 ## [0.2.0] — 2026-06-20
 
 ### Added
