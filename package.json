@@ -1,0 +1,40 @@
+{
+  "name": "vibe-code-tours",
+  "version": "0.0.1",
+  "description": "Vibe Code Tours bootcamp toolkit — student + instructor CLI.",
+  "homepage": "https://vibecode.tours",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vibe-code-tours/cli.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "vibe-code-tours": "./bin/vibe-code-tours.mjs"
+  },
+  "type": "module",
+  "files": [
+    "bin",
+    "lib",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "build": "echo 'esbuild bundle TODO (Phase 1)'"
+  },
+  "keywords": [
+    "vibecode",
+    "bootcamp",
+    "claude",
+    "myanmar",
+    "ai-coding"
+  ],
+  "author": "Vibe Code Tours <ai@vibecode.tours>",
+  "publishConfig": {
+    "access": "public"
+  }
+}
