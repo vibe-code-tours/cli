@@ -1,0 +1,35 @@
+name = "cli-telemetry"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+account_id = "REPLACE_WITH_VIBECODE_TOURS_ACCOUNT_ID"
+
+# Public name surfaced in Cloudflare dashboard.
+workers_dev = false
+
+# Route under the marketing site. Use either routes OR a custom hostname.
+# Active route (preferred): https://vibecode.tours/api/cli-telemetry/*
+[[routes]]
+pattern = "vibecode.tours/api/cli-telemetry/*"
+zone_name = "vibecode.tours"
+
+# Alternate custom hostname (commented). Uncomment if we split telemetry off
+# the main zone instead of routing under it.
+# [[routes]]
+# pattern = "telemetry.vibecode.tours/*"
+# custom_domain = true
+
+# Workers KV for rate limiting + counters.
+# Create the namespace once with:
+#   wrangler kv:namespace create CLI_TELEMETRY_KV
+# Then paste the id below.
+[[kv_namespaces]]
+binding = "CLI_TELEMETRY_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+ALLOWED_ORIGIN = "https://vibecode.tours"
+RATE_LIMIT_PER_HOUR = "100"
+
+# Optional Logpush — populated by the CF dashboard, not here. See README.
+[observability]
+enabled = true

@@ -84,7 +84,7 @@ vibe-code-tours submit ch-1
 
 ```
 ~/.vct/
-├── config.json        # { cohort, lang, github, provider, telemetry_optin }
+├── config.json        # { cohort, lang, github, provider, telemetry }
 └── scripts/
     ├── doctor.sh
     ├── student-setup.sh
@@ -119,6 +119,64 @@ in `lib/i18n.js`.
 | macOS                 | Tier-1                                                    |
 | Windows + WSL         | Tier-1 (run from inside Ubuntu)                           |
 | Native Windows        | Detects missing `bash`, prints WSL install instructions   |
+
+## Telemetry
+
+Telemetry is **opt-in, anonymous, and best-effort**. We do not collect
+any data by default. After your first successful `setup`, the CLI asks
+once:
+
+```
+Help improve VCT? Send anonymous command stats? (y/N)
+```
+
+The choice is persisted to `~/.vct/config.json` (`telemetry: true|false`).
+You are never asked again.
+
+### What is collected (if you opt in)
+
+Each command sends exactly five fields:
+
+```json
+{
+  "cohort": 2,
+  "command": "doctor",
+  "exit_code": 0,
+  "ts": 1750000000000,
+  "cli_version": "0.3.0"
+}
+```
+
+No file paths. No GitHub handle. No API keys. No source IPs are
+retained on the server. (They are used only for a rolling-hour rate
+limit and discarded.)
+
+### Guarantees
+
+- Telemetry never blocks the CLI — 1 second hard timeout.
+- Telemetry failures are silent — no warnings, no exit-code change.
+- `--quiet` and non-TTY environments skip the first-run prompt.
+
+### Opt out
+
+Any of the following disables telemetry:
+
+```bash
+# 1. Re-run the wipe + prompt flow.
+vibe-code-tours reset
+vibe-code-tours setup   # answer 'N' at the prompt
+
+# 2. Or edit the config directly.
+$EDITOR ~/.vct/config.json
+# set "telemetry": false
+```
+
+### Server side
+
+The endpoint is a separate Cloudflare Worker that lives in
+[`worker/`](./worker/) in this repo and is **not** bundled into the
+npm package. See [`worker/README.md`](./worker/README.md) for the
+deploy recipe and KV setup.
 
 ## Develop
 
