@@ -531,12 +531,17 @@ async function cmdSync(flags) {
       process.stdout.write(`  ${c.red('x')} ${r.name} — ${r.error || r.source}\n`);
       continue;
     }
+    if (r.source === 'embedded') {
+      // Offline run / upstream unreachable — embedded is the desired output.
+      process.stdout.write(`  ${c.dim('·')} ${r.name} (embedded)\n`);
+      continue;
+    }
     if (r.changed) {
       const before = (r.before || '(cold)').slice(0, 12);
       const after = (r.after || '?').slice(0, 12);
       process.stdout.write(`  ${c.green('+')} ${t('sync.fresh', { name: r.name, before, after })}\n`);
     } else {
-      process.stdout.write(`  ${c.dim('.')} ${t('sync.unchanged', { name: r.name })}\n`);
+      process.stdout.write(`  ${c.dim('·')} ${t('sync.unchanged', { name: r.name })}\n`);
     }
   }
   return results.some((r) => !r.ok) ? 1 : 0;

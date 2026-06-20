@@ -162,3 +162,39 @@ test('reset -y short alias works', () => {
   assert.equal(r.command, 'reset');
   assert.equal(r.flags.yes, true);
 });
+
+// --- Phase 4: scripts-sync flags --------------------------------------
+
+test('parses --offline as boolean flag', () => {
+  const r = parse(['doctor', '--offline']);
+  assert.equal(r.command, 'doctor');
+  assert.equal(r.flags.offline, true);
+  assert.deepEqual(r.errors, []);
+});
+
+test('parses --refresh as boolean flag', () => {
+  const r = parse(['doctor', '--refresh']);
+  assert.equal(r.command, 'doctor');
+  assert.equal(r.flags.refresh, true);
+  assert.deepEqual(r.errors, []);
+});
+
+test('--offline and --refresh can be combined', () => {
+  const r = parse(['setup', '--offline', '--refresh']);
+  assert.equal(r.command, 'setup');
+  assert.equal(r.flags.offline, true);
+  assert.equal(r.flags.refresh, true);
+  assert.deepEqual(r.errors, []);
+});
+
+test('recognizes sync as a top-level command', () => {
+  const r = parse(['sync']);
+  assert.equal(r.command, 'sync');
+  assert.deepEqual(r.errors, []);
+});
+
+test('sync accepts --offline pass-through', () => {
+  const r = parse(['sync', '--offline']);
+  assert.equal(r.command, 'sync');
+  assert.equal(r.flags.offline, true);
+});
