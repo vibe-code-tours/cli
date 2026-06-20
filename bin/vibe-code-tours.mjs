@@ -4,13 +4,15 @@
 // renders bundled docs / FAQ / chapter content directly.
 
 import { spawn, spawnSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 
 import { parse } from '../lib/parser.js';
 import { setColorEnabled, detectColorSupport, c } from '../lib/colors.js';
 import { setLang, t, listLangs, hasNative } from '../lib/i18n.js';
-import { readConfig, writeConfig } from '../lib/config.js';
-import { materializeScripts, getScriptPath, hasScript, SCRIPT_FILES } from '../lib/scripts.js';
+import { readConfig, writeConfig, getConfigPath } from '../lib/config.js';
+import { materializeScripts, getScriptPath, hasScript, SCRIPT_FILES, materialize } from '../lib/scripts.js';
+import { refreshAll } from '../lib/scripts-fetcher.js';
 import { renderBanner, renderHelp } from '../lib/banner.js';
 import { openUrl } from '../lib/open.js';
 import { renderMarkdown } from '../lib/markdown.js';
@@ -19,17 +21,25 @@ import { normalizeChapter, listChapters, getChapter } from '../lib/chapters.js';
 import { searchFaq, totalEntries as faqTotal } from '../lib/faq.js';
 import { collectEnv, formatEnv } from '../lib/env.js';
 import { ask, choose } from '../lib/prompt.js';
+import { renderWhoami } from '../lib/whoami.js';
+import { parseDoctorOutput, buildDoctorReport } from '../lib/doctor-json.js';
+import { sendEvent, maybePromptForTelemetry } from '../lib/telemetry.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json');
 const VERSION = pkg.version;
 const APPLY_BASE = 'https://vibecode.tours/apply';
+const SPONSORS_URL = 'https://vibecode.tours/sponsors';
 
 async function main() {
   const argv = process.argv.slice(2);
   const parsed = parse(argv);
 
-  setColorEnabled(detectColorSupport({ noColorFlag: !!parsed.flags.noColor }));
+  // doctor --json must emit ONLY JSON to stdout; suppress ANSI everywhere.
+  const jsonMode = parsed.command === 'doctor' && !!parsed.flags.json;
+  setColorEnabled(
+    !jsonMode && detectColorSupport({ noColorFlag: !!parsed.flags.noColor }),
+  );
 
   let config = await readConfig();
   // Apply persisted lang first, then CLI override.
@@ -55,6 +65,10 @@ async function main() {
     config = await writeConfig({ cohort: n });
   }
 
+  // doctor --json: skip script materialization noise; we still materialize
+  // because doctor.sh needs to exist on disk, but suppress the dim notice.
+  const suppressMaterializeNote = parsed.flags.quiet || jsonMode;
+
   let materialized;
   try {
     materialized = await materializeScripts();
@@ -62,7 +76,7 @@ async function main() {
     process.stderr.write(`${c.red('error')}: failed to extract scripts: ${err.message}\n`);
     return 1;
   }
-  if (!parsed.flags.quiet && materialized.written.length > 0) {
+  if (!suppressMaterializeNote && materialized.written.length > 0) {
     process.stderr.write(
       `${c.dim(`extracted ${materialized.written.length} script(s) to ${materialized.dir}`)}\n`,
     );
@@ -110,8 +124,9 @@ async function dispatch(parsed, config) {
 
   switch (command) {
     case 'doctor':
+      if (flags.json) return cmdDoctorJson([...positional, ...rest], flags);
       if (!hasBash()) return failNoBash();
-      return runScript('doctor.sh', [...positional, ...rest], { flags });
+      return runScriptResolved('doctor.sh', [...positional, ...rest], { flags });
     case 'setup':
       return cmdSetup(positional, rest, flags);
     case 'api-setup':
@@ -123,7 +138,7 @@ async function dispatch(parsed, config) {
         process.stderr.write(`${c.red('error')}: ${t('check.missingArg')}\n`);
         return 2;
       }
-      return runScript('doctor.sh', [chapter, ...positional.slice(1), ...rest], { flags });
+      return runScriptResolved('doctor.sh', [chapter, ...positional.slice(1), ...rest], { flags });
     }
     case 'guide':
       return cmdGuide(positional, flags);
@@ -139,6 +154,14 @@ async function dispatch(parsed, config) {
       return cmdSubmit(positional, flags, config);
     case 'lang':
       return cmdLang(subcommand);
+    case 'whoami':
+      return cmdWhoami(flags);
+    case 'sponsor':
+      return cmdSponsor(flags);
+    case 'reset':
+      return cmdReset(flags);
+    case 'sync':
+      return cmdSync(flags);
     case 'skill':
     case 'agent':
     case 'mcp':
@@ -157,7 +180,21 @@ async function cmdSetup(positional, rest, flags) {
     return 0;
   }
   if (!hasBash()) return failNoBash();
-  return runScript('student-setup.sh', [...positional, ...rest], { flags });
+  const code = await runScriptResolved('student-setup.sh', [...positional, ...rest], { flags });
+  // First-run flow: on successful setup, ask once about telemetry. Silent on
+  // non-TTY / --quiet. Errors are swallowed inside maybePromptForTelemetry.
+  if (code === 0) {
+    const decision = await maybePromptForTelemetry({
+      askImpl: ask,
+      quiet: !!flags.quiet,
+    });
+    if (decision === true && !flags.quiet) {
+      process.stdout.write(`${c.dim(t('telemetry.optedIn'))}\n`);
+    } else if (decision === false && !flags.quiet) {
+      process.stdout.write(`${c.dim(t('telemetry.optedOut'))}\n`);
+    }
+  }
+  return code;
 }
 
 async function cmdApiSetup(positional, rest, flags) {
@@ -183,7 +220,7 @@ async function cmdApiSetup(positional, rest, flags) {
   }
   if (!hasBash()) return failNoBash();
   const env = provider ? { VCT_PROVIDER: provider } : {};
-  return runScript('api-setup.sh', [...positional, ...rest], { flags, env });
+  return runScriptResolved('api-setup.sh', [...positional, ...rest], { flags, env });
 }
 
 async function cmdGuide(positional, flags) {
@@ -223,11 +260,11 @@ async function cmdVerify(positional, rest, flags) {
   if (!hasBash()) return failNoBash();
   const specific = `check-ch${norm.n}.sh`;
   if (hasScript(specific)) {
-    return runScript(specific, [...positional.slice(1), ...rest], { flags });
+    return runScriptResolved(specific, [...positional.slice(1), ...rest], { flags });
   }
   // Fall back to doctor.sh ch-N for chapters without a dedicated script.
   if (!flags.quiet) process.stderr.write(`${c.yellow('note')}: ${t('check.notVendored', { id: norm.id })}\n`);
-  return runScript('doctor.sh', [norm.id, ...positional.slice(1), ...rest], { flags });
+  return runScriptResolved('doctor.sh', [norm.id, ...positional.slice(1), ...rest], { flags });
 }
 
 async function cmdGuides(subcommand, positional, flags) {
@@ -372,6 +409,85 @@ async function cmdLang(subcommand) {
   return 0;
 }
 
+async function cmdWhoami(_flags) {
+  const text = await renderWhoami({ version: VERSION });
+  process.stdout.write(text);
+  return 0;
+}
+
+async function cmdSponsor(flags) {
+  const result = openUrl(SPONSORS_URL, { dryRun: !!process.env.VCT_DRY_RUN });
+  if (result.spawned) {
+    if (!flags.quiet) process.stdout.write(`${t('sponsor.opening')}\n  ${c.underline(SPONSORS_URL)}\n`);
+  } else {
+    process.stdout.write(`${t('sponsor.fallback')}\n  ${c.underline(SPONSORS_URL)}\n`);
+  }
+  return 0;
+}
+
+async function cmdReset(flags) {
+  const path = getConfigPath();
+  // `--yes` skips the confirmation prompt (for CI / scripted teardown).
+  if (!flags.yes) {
+    const answer = await ask(t('reset.prompt', { path }), { defaultValue: 'N' });
+    if (!answer || !/^y(es)?$/i.test(answer.trim())) {
+      process.stdout.write(`${c.dim(t('reset.kept'))}\n`);
+      return 0;
+    }
+  }
+  try {
+    await fs.unlink(path);
+    process.stdout.write(`${c.green(t('reset.deleted', { path }))}\n`);
+    return 0;
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      process.stdout.write(`${c.dim(t('reset.missing', { path }))}\n`);
+      return 0;
+    }
+    process.stderr.write(`${c.red('error')}: ${t('reset.failed', { path, msg: err.message })}\n`);
+    return 1;
+  }
+}
+
+async function cmdDoctorJson(args, flags) {
+  if (!hasBash()) {
+    // For --json, emit a structured error rather than the EN-only fail message.
+    process.stdout.write(
+      JSON.stringify(
+        { schema: 'vibe-code-tours/doctor@1', error: t('doctor.jsonNoBash'), exitCode: 127 },
+        null,
+        2,
+      ) + '\n',
+    );
+    return 127;
+  }
+  // Force plain mode + skip self-update so the parser sees deterministic
+  // output. The script also reacts to NO_COLOR=1 and non-TTY stdout.
+  const scriptArgs = ['--plain', '--no-update', '--non-interactive', ...args];
+  const captured = await captureScript('doctor.sh', scriptArgs, {
+    env: { NO_COLOR: '1', DOCTOR_SKIP_UPDATE: '1' },
+  });
+  try {
+    const parsed = parseDoctorOutput(captured.output);
+    const report = buildDoctorReport({ exitCode: captured.code, parsed });
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    return captured.code;
+  } catch (err) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          schema: 'vibe-code-tours/doctor@1',
+          error: t('doctor.jsonFailed', { msg: err.message }),
+          exitCode: captured.code,
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+    return captured.code || 1;
+  }
+}
+
 function cmdPlaceholder(cmd, subcommand, positional) {
   const sub = subcommand ? ` ${subcommand}` : '';
   const args = positional.length ? ` ${positional.join(' ')}` : '';
@@ -380,8 +496,68 @@ function cmdPlaceholder(cmd, subcommand, positional) {
   return 0;
 }
 
-function runScript(name, args, { flags, env = {} }) {
-  const scriptPath = getScriptPath(name);
+async function captureScript(name, args, { env = {} } = {}) {
+  let scriptPath;
+  try {
+    const resolved = await materialize(name, {});
+    scriptPath = resolved.path;
+  } catch {
+    scriptPath = getScriptPath(name);
+  }
+  return new Promise((resolve) => {
+    let out = '';
+    const child = spawn('bash', [scriptPath, ...args], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, VCT_VERSION: VERSION, ...env },
+    });
+    child.stdout.on('data', (b) => (out += b.toString('utf8')));
+    child.stderr.on('data', (b) => (out += b.toString('utf8')));
+    child.on('exit', (code) => resolve({ output: out, code: code ?? 0 }));
+    child.on('error', (err) => resolve({ output: out + `\n[spawn-error] ${err.message}\n`, code: 127 }));
+  });
+}
+
+async function cmdSync(flags) {
+  process.stdout.write(`${c.dim(t('sync.starting'))}\n`);
+  let results;
+  try {
+    results = await refreshAll({ offline: !!flags.offline });
+  } catch (err) {
+    process.stderr.write(`${c.red('error')}: ${t('sync.failed', { msg: err.message })}\n`);
+    return 1;
+  }
+  for (const r of results) {
+    if (!r.ok) {
+      process.stdout.write(`  ${c.red('x')} ${r.name} — ${r.error || r.source}\n`);
+      continue;
+    }
+    if (r.changed) {
+      const before = (r.before || '(cold)').slice(0, 12);
+      const after = (r.after || '?').slice(0, 12);
+      process.stdout.write(`  ${c.green('+')} ${t('sync.fresh', { name: r.name, before, after })}\n`);
+    } else {
+      process.stdout.write(`  ${c.dim('.')} ${t('sync.unchanged', { name: r.name })}\n`);
+    }
+  }
+  return results.some((r) => !r.ok) ? 1 : 0;
+}
+
+// Resolve a script path via materialize() (fetches upstream, falls back to embedded),
+// then spawn it. Single wrapper used by every command that runs a bash script.
+async function runScriptResolved(name, args, opts) {
+  const flags = opts?.flags || {};
+  let resolved;
+  try {
+    resolved = await materialize(name, { offline: !!flags.offline, refresh: !!flags.refresh });
+  } catch (err) {
+    process.stderr.write(`${c.red('error')}: ${t('script.missing', { name })} (${err.message})\n`);
+    return 127;
+  }
+  return runScript(name, args, { ...opts, scriptPath: resolved.path });
+}
+
+function runScript(name, args, { flags, env = {}, scriptPath }) {
+  scriptPath = scriptPath || getScriptPath(name);
   if (flags.help) {
     process.stdout.write(`${c.bold(`vibe-code-tours ${name.replace(/\.sh$/, '')}`)} — spawns ${name}\n`);
     process.stdout.write(`Underlying script: ${c.dim(scriptPath)}\n`);
@@ -422,9 +598,30 @@ function failNoBash() {
   return 127;
 }
 
-main()
-  .then((code) => process.exit(code ?? 0))
-  .catch((err) => {
+async function runWithTelemetry() {
+  const argv = process.argv.slice(2);
+  // Parse once just to pluck command name for the telemetry event. main()
+  // re-parses internally. This is intentional to keep main() simple.
+  let cmdName = 'banner';
+  try {
+    const peek = (await import('../lib/parser.js')).parse(argv);
+    if (peek && peek.command) cmdName = peek.command;
+  } catch {}
+
+  let code = 0;
+  try {
+    code = await main();
+  } catch (err) {
     process.stderr.write(`${c.red('fatal')}: ${err.stack ?? err.message}\n`);
-    process.exit(1);
-  });
+    code = 1;
+  }
+
+  // Best-effort: fire opt-in telemetry. NEVER blocks > 1s, NEVER throws.
+  try {
+    await sendEvent({ command: cmdName, exit_code: code }).catch(() => {});
+  } catch {}
+
+  process.exit(code ?? 0);
+}
+
+runWithTelemetry();

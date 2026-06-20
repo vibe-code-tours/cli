@@ -133,3 +133,32 @@ test('verify 1 keeps 1 as positional', () => {
   assert.equal(r.command, 'verify');
   assert.deepEqual(r.positional, ['1']);
 });
+
+// --- Phase 3 commands (whoami / sponsor / reset / doctor --json) -----------
+
+test('recognizes whoami / sponsor / reset commands', () => {
+  for (const cmd of ['whoami', 'sponsor', 'reset']) {
+    const r = parse([cmd]);
+    assert.equal(r.command, cmd, `${cmd} should be a known command`);
+    assert.deepEqual(r.errors, [], `${cmd} should not error`);
+  }
+});
+
+test('doctor --json sets json flag', () => {
+  const r = parse(['doctor', '--json']);
+  assert.equal(r.command, 'doctor');
+  assert.equal(r.flags.json, true);
+  assert.deepEqual(r.errors, []);
+});
+
+test('reset --yes sets yes flag', () => {
+  const r = parse(['reset', '--yes']);
+  assert.equal(r.command, 'reset');
+  assert.equal(r.flags.yes, true);
+});
+
+test('reset -y short alias works', () => {
+  const r = parse(['reset', '-y']);
+  assert.equal(r.command, 'reset');
+  assert.equal(r.flags.yes, true);
+});
