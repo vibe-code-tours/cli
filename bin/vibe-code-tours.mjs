@@ -231,6 +231,14 @@ async function cmdGuide(positional, flags) {
   }
   const norm = normalizeChapter(arg);
   if (!norm) {
+    // not a chapter id — fall back to a bundled guide slug (e.g. `guide marp`)
+    const glang = (flags.lang || 'en');
+    const g = getGuide(arg, glang);
+    if (g) {
+      process.stdout.write(c.dim(`\u2500\u2500 ${arg} \u2014 ${glang} \u2500\u2500`) + '\n\n');
+      process.stdout.write(renderMarkdown(g.body) + '\n');
+      return 0;
+    }
     process.stderr.write(`${c.red('error')}: ${t('guide.missingArg')}\n`);
     return 2;
   }

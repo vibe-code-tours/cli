@@ -38,6 +38,25 @@ This project uses [semantic versioning](https://semver.org/) plus dist-tags:
 - `tests/parser.test.mjs` — recognizes `--offline`, `--refresh`, and
   the `sync` command.
 
+## [0.5.0]
+
+### Added
+
+- **ch-5 + ch-6 self-checks** — `doctor.sh ch-5` (Skill + Subagent in the personal
+  repo, a tech-stack slide deck, one feedback file, live URL) and `doctor.sh ch-6`
+  (closed-issue links, LICENSE, README, analytics, >=3 updated screenshots, public
+  live URL, gallery slides). Vendored `doctor.sh` re-synced to `vibecode-setup`.
+
+## [0.4.0]
+
+### Added
+
+- **ch-4 self-check** — `doctor.sh ch-4` validates the chapter-4 personal
+  project: team-repo `ch-4/<you>/report.md` (committed by you), personal repo
+  owner + `LICENSE` file, a live/download URL, >=3 screenshots that exist in
+  the repo, and a product-intro slide deck. Vendored `doctor.sh` synced to
+  `vibecode-setup` `2026-06-23a`.
+
 ## [0.3.0] — 2026-06-20
 
 ### Added
